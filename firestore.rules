@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Your Next.js API routes use the Firebase Admin SDK, which always has full
+// access regardless of these rules. Browsers never talk to Firestore
+// directly in this app, so the safest rule is to deny all client access.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
