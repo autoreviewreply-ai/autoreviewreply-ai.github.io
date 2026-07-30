@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/database";
+import { getUserDatabase } from "@/lib/database";
+import { getSessionUid } from "@/lib/session";
 
-// GET /api/team - Fetch active team members and system audit logs
+// GET /api/team - Fetch the signed-in user's team members and audit logs
 export async function GET() {
   try {
-    const data = db.get();
-    return NextResponse.json({ 
-      team: data.team,
-      auditLogs: data.auditLogs 
-    });
+    const uid = await getSessionUid();
+    if (!uid) return NextResponse.json({ team: [], auditLogs: [] });
+
+    const data = await getUserDatabase(uid).get();
+    return NextResponse.json({ team: data.team, auditLogs: data.auditLogs });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -17,6 +18,9 @@ export async function GET() {
 // POST /api/team - Invite a new team member
 export async function POST(req: NextRequest) {
   try {
+    const uid = await getSessionUid();
+    if (!uid) return NextResponse.json({ error: "You must be signed in." }, { status: 401 });
+
     const body = await req.json();
     const { name, email, role } = body;
 
@@ -24,30 +28,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    let newMember = null;
+    const userDb = getUserDatabase(uid);
+    let newMember: any = null;
 
-    db.update((schema) => {
+    await userDb.update((schema) => {
       newMember = {
-        id: 'team-' + Date.now(),
+        id: "team-" + Date.now(),
         name,
         email,
-        role: role as 'owner' | 'manager' | 'staff',
-        permissions: role === 'manager' 
-          ? ['manage_settings', 'approve_replies'] 
-          : (role === 'owner' ? ['all'] : ['view_reviews'])
+        role: role as "owner" | "manager" | "staff",
+        permissions:
+          role === "manager" ? ["manage_settings", "approve_replies"] : role === "owner" ? ["all"] : ["view_reviews"],
       };
-      
+
       schema.team.push(newMember);
 
-      // Audit Log
       schema.auditLogs.unshift({
-        id: 'log-' + Date.now(),
-        userId: 'user-001',
-        userName: schema.users[0]?.name || 'Dr. Evelyn Carter',
-        action: 'Team Member Invited',
-        ip: '127.0.0.1',
+        id: "log-" + Date.now(),
+        userId: uid,
+        userName: schema.users[0]?.name || "Owner",
+        action: "Team Member Invited",
+        ip: "unknown",
         details: `Invited ${name} (${email}) as ${role.toUpperCase()} to the workspace.`,
-        timestamp: 'Just now'
+        timestamp: "Just now",
       });
     });
 
@@ -57,31 +60,34 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE /api/team - Delete/remove a team member
+// DELETE /api/team - Remove a team member
 export async function DELETE(req: NextRequest) {
   try {
+    const uid = await getSessionUid();
+    if (!uid) return NextResponse.json({ error: "You must be signed in." }, { status: 401 });
+
     const { searchParams } = new URL(req.url);
-    const id = searchParams.get('id');
+    const id = searchParams.get("id");
 
     if (!id) {
       return NextResponse.json({ error: "Member ID is required" }, { status: 400 });
     }
 
-    db.update((schema) => {
-      const idx = schema.team.findIndex(t => t.id === id);
+    const userDb = getUserDatabase(uid);
+    await userDb.update((schema) => {
+      const idx = schema.team.findIndex((t) => t.id === id);
       if (idx !== -1) {
         const removed = schema.team[idx];
         schema.team.splice(idx, 1);
 
-        // Audit Log
         schema.auditLogs.unshift({
-          id: 'log-' + Date.now(),
-          userId: 'user-001',
-          userName: schema.users[0]?.name || 'Dr. Evelyn Carter',
-          action: 'Team Member Removed',
-          ip: '127.0.0.1',
+          id: "log-" + Date.now(),
+          userId: uid,
+          userName: schema.users[0]?.name || "Owner",
+          action: "Team Member Removed",
+          ip: "unknown",
           details: `Revoked workspace access for ${removed.name} (${removed.email}).`,
-          timestamp: 'Just now'
+          timestamp: "Just now",
         });
       }
     });

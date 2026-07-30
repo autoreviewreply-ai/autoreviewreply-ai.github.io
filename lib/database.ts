@@ -1,8 +1,8 @@
-import fs from 'fs';
-import path from 'path';
+import { adminDb } from './firebase-admin';
 
-// Define DB paths
-const DB_FILE_PATH = path.join(process.cwd(), 'data', 'db.json');
+// Firestore collection that holds one document per signed-in user,
+// containing that user's entire app state (profiles, reviews, settings, etc).
+const USER_DATA_COLLECTION = 'userData';
 
 // Types
 export interface User {
@@ -430,67 +430,60 @@ export const getEmptyDatabase = (): DatabaseSchema => {
   };
 };
 
-class LocalDatabase {
+/**
+ * Per-user database backed by Firestore. Each signed-in user gets exactly
+ * one document (keyed by their Firebase uid) holding their whole app state.
+ * This replaces the old fs.writeFileSync-based store, which could never work
+ * on Vercel: serverless functions get a read-only filesystem and don't share
+ * disk state between invocations, so nothing written to a local file ever
+ * actually persisted or was visible to the next request.
+ */
+export class UserDatabase {
+  private uid: string;
   private data: DatabaseSchema | null = null;
 
-  constructor() {
-    this.init();
+  constructor(uid: string) {
+    this.uid = uid;
   }
 
-  private init() {
-    try {
-      const dir = path.dirname(DB_FILE_PATH);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
+  private docRef() {
+    return adminDb.collection(USER_DATA_COLLECTION).doc(this.uid);
+  }
 
-      if (fs.existsSync(DB_FILE_PATH)) {
-        const fileContent = fs.readFileSync(DB_FILE_PATH, 'utf-8');
-        this.data = JSON.parse(fileContent);
-      } else {
-        // Create initial database file
-        this.data = getEmptyDatabase();
-        this.save();
-      }
-    } catch (error) {
-      console.error('Error initializing database, using in-memory fallback', error);
+  public async get(): Promise<DatabaseSchema> {
+    if (this.data) return this.data;
+
+    const snap = await this.docRef().get();
+    if (snap.exists) {
+      this.data = snap.data() as DatabaseSchema;
+    } else {
       this.data = getEmptyDatabase();
+      await this.docRef().set(this.data);
     }
+    return this.data;
   }
 
-  public save(): void {
-    if (!this.data) return;
-    try {
-      const dir = path.dirname(DB_FILE_PATH);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(this.data, null, 2), 'utf-8');
-    } catch (error) {
-      console.error('Failed to save to local database file', error);
-    }
+  public async update(updater: (db: DatabaseSchema) => void): Promise<DatabaseSchema> {
+    const current = await this.get();
+    updater(current);
+    await this.docRef().set(current);
+    this.data = current;
+    return current;
   }
 
-  public get(): DatabaseSchema {
-    if (!this.data) {
-      this.init();
-    }
-    return this.data!;
-  }
-
-  public update(updater: (db: DatabaseSchema) => void): DatabaseSchema {
-    const db = this.get();
-    updater(db);
-    this.save();
-    return db;
-  }
-
-  public reset(): DatabaseSchema {
+  public async reset(): Promise<DatabaseSchema> {
     this.data = getEmptyDatabase();
-    this.save();
+    await this.docRef().set(this.data);
+    return this.data;
+  }
+
+  public async seedDemoData(): Promise<DatabaseSchema> {
+    this.data = getSeededData();
+    await this.docRef().set(this.data);
     return this.data;
   }
 }
 
-// Global database instance
-export const db = new LocalDatabase();
+export function getUserDatabase(uid: string): UserDatabase {
+  return new UserDatabase(uid);
+}

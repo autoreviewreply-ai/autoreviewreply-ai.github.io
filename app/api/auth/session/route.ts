@@ -1,200 +1,215 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, getSeededData, User } from "@/lib/database";
+import { adminAuth } from "@/lib/firebase-admin";
+import { getUserDatabase, User } from "@/lib/database";
+import { getSessionUid, SESSION_COOKIE_NAME, SESSION_EXPIRES_IN_MS } from "@/lib/session";
 
-// GET /api/auth/session - Get active session user & google account
+// Firebase's Identity Toolkit REST API is what actually creates/verifies
+// accounts and passwords. NEXT_PUBLIC_FIREBASE_API_KEY is safe to use here
+// too - it's a public API key by design (Firebase's real security is its
+// Auth rules + Firestore rules, not this key).
+const FIREBASE_API_KEY = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+
+async function identityToolkit(endpoint: "signUp" | "signInWithPassword", body: Record<string, unknown>) {
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:${endpoint}?key=${FIREBASE_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, returnSecureToken: true }),
+    }
+  );
+  const data = await res.json();
+  if (!res.ok) {
+    const message = data?.error?.message || "Authentication failed";
+    // Turn Firebase's ALL_CAPS_ERROR_CODES into something readable
+    const friendly: Record<string, string> = {
+      EMAIL_EXISTS: "An account with that email already exists. Try logging in instead.",
+      EMAIL_NOT_FOUND: "No account found with that email.",
+      INVALID_PASSWORD: "Incorrect password.",
+      INVALID_LOGIN_CREDENTIALS: "Incorrect email or password.",
+      WEAK_PASSWORD: "Password must be at least 6 characters.",
+      INVALID_EMAIL: "That doesn't look like a valid email address.",
+    };
+    throw new Error(friendly[message] || message);
+  }
+  return data as { idToken: string; localId: string; email: string };
+}
+
+async function setSessionCookie(response: NextResponse, idToken: string) {
+  const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_EXPIRES_IN_MS });
+  response.cookies.set(SESSION_COOKIE_NAME, sessionCookie, {
+    maxAge: SESSION_EXPIRES_IN_MS / 1000,
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+  });
+}
+
+// GET /api/auth/session - Get the currently logged-in user (if any)
 export async function GET() {
   try {
-    const data = db.get();
+    const uid = await getSessionUid();
+    if (!uid) {
+      return NextResponse.json({ currentUser: null, googleAccount: null, subscription: null });
+    }
+    const data = await getUserDatabase(uid).get();
     return NextResponse.json({
       currentUser: data.currentUser,
       googleAccount: data.googleAccount,
-      subscription: data.subscription
+      subscription: data.subscription,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// POST /api/auth/session - Handle signup, login, logout, profile update, account delete, export data
+// POST /api/auth/session - signup, login, logout, update_profile, delete_account
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { action, fullName, username, email, password, birthday, avatar, newPassword } = body;
 
-    let resData: any = { success: false };
+    if (action === "signup") {
+      if (!email || !password) throw new Error("Email and password are required.");
 
-    db.update((schema) => {
-      // 1. SIGNUP
-      if (action === "signup") {
-        const newUser: User = {
-          id: 'user-' + Date.now(),
-          name: fullName || "New User",
-          email: email || "user@example.com",
-          avatar: avatar || "https://picsum.photos/seed/user/100/100",
-          role: 'owner',
-          username: username || "user123",
-          birthday: birthday || "",
-          password: password || ""
-        };
+      const authData = await identityToolkit("signUp", { email, password });
+      const uid = authData.localId;
+      const userDb = getUserDatabase(uid);
 
-        schema.users.push(newUser);
+      const newUser: User = {
+        id: uid,
+        name: fullName || email.split("@")[0],
+        email,
+        avatar: avatar || `https://picsum.photos/seed/${uid}/100/100`,
+        role: "owner",
+        username: username || email.split("@")[0],
+        birthday: birthday || "",
+      };
+
+      await userDb.update((schema) => {
+        schema.users = [newUser];
         schema.currentUser = newUser;
-        
-        // Add audit log
         schema.auditLogs.unshift({
-          id: 'log-' + Date.now(),
-          userId: newUser.id,
+          id: "log-" + Date.now(),
+          userId: uid,
           userName: newUser.name,
-          action: 'User Registered & Logged In',
-          ip: '127.0.0.1',
+          action: "User Registered & Logged In",
+          ip: "unknown",
           details: `Account registered successfully for ${newUser.name} (${newUser.email}).`,
-          timestamp: 'Just now'
+          timestamp: "Just now",
         });
+      });
 
-        resData = { success: true, user: newUser };
-      }
-      
-      // 2. LOGIN
-      else if (action === "login") {
-        // Authenticate user
-        let user = schema.users.find(u => u.email.toLowerCase() === (email || "").toLowerCase());
-        
-        if (!user) {
-          // If no users exist, let's auto-create on first email login to keep it fluid, 
-          // or seed Evelyn Carter if logging in with her email
-          if (email && email.toLowerCase().includes("carter")) {
-            const seed = getSeededData();
-            schema.users = seed.users;
-            schema.currentUser = seed.users[0];
-            schema.googleAccount = seed.googleAccount;
-            schema.businessProfiles = seed.businessProfiles;
-            schema.aiSettings = seed.aiSettings;
-            schema.reviews = seed.reviews;
-            schema.replies = seed.replies;
-            schema.team = seed.team;
-            schema.subscription = seed.subscription;
-            schema.notifications = seed.notifications;
-            schema.auditLogs = seed.auditLogs;
-            user = seed.users[0];
-          } else {
-            // Auto create new user to prevent login blocker (premium design friendliness)
-            const newUser: User = {
-              id: 'user-' + Date.now(),
-              name: email ? email.split('@')[0] : "Demo Owner",
-              email: email || "demo@example.com",
-              avatar: `https://picsum.photos/seed/${email}/100/100`,
-              role: 'owner',
-              username: email ? email.split('@')[0] : "demo123",
-              birthday: birthday || "1994-06-18",
-              password: password || "password"
-            };
-            schema.users.push(newUser);
-            schema.currentUser = newUser;
-            user = newUser;
-          }
+      const response = NextResponse.json({ success: true, user: newUser });
+      await setSessionCookie(response, authData.idToken);
+      return response;
+    }
+
+    if (action === "login") {
+      if (!email || !password) throw new Error("Email and password are required.");
+
+      const authData = await identityToolkit("signInWithPassword", { email, password });
+      const uid = authData.localId;
+      const userDb = getUserDatabase(uid);
+      let data = await userDb.get();
+
+      // First time this uid has ever logged in and there's no profile data yet.
+      if (!data.currentUser) {
+        // Convenience: if they sign in with an email containing "carter", give them
+        // the fully-populated demo workspace so the product can be explored right away.
+        if (email.toLowerCase().includes("carter")) {
+          data = await userDb.seedDemoData();
         } else {
-          // Verify password simple check
-          if (password && user.password && user.password !== password) {
-            throw new Error("Incorrect credentials");
-          }
-          schema.currentUser = user;
-        }
-
-        schema.auditLogs.unshift({
-          id: 'log-' + Date.now(),
-          userId: user.id,
-          userName: user.name,
-          action: 'User Logged In',
-          ip: '127.0.0.1',
-          details: `User ${user.name} logged in successfully.`,
-          timestamp: 'Just now'
-        });
-
-        resData = { success: true, user };
-      }
-
-      // 3. LOGOUT
-      else if (action === "logout") {
-        const prevUser = schema.currentUser;
-        schema.currentUser = null;
-        
-        if (prevUser) {
-          schema.auditLogs.unshift({
-            id: 'log-' + Date.now(),
-            userId: prevUser.id,
-            userName: prevUser.name,
-            action: 'User Logged Out',
-            ip: '127.0.0.1',
-            details: `User ${prevUser.name} signed out.`,
-            timestamp: 'Just now'
+          const newUser: User = {
+            id: uid,
+            name: email.split("@")[0],
+            email,
+            avatar: `https://picsum.photos/seed/${uid}/100/100`,
+            role: "owner",
+            username: email.split("@")[0],
+            birthday: "",
+          };
+          data = await userDb.update((schema) => {
+            schema.users = [newUser];
+            schema.currentUser = newUser;
           });
         }
-        resData = { success: true };
       }
 
-      // 4. UPDATE_PROFILE
-      else if (action === "update_profile") {
-        if (!schema.currentUser) {
-          throw new Error("Unauthorized");
-        }
+      await userDb.update((schema) => {
+        schema.auditLogs.unshift({
+          id: "log-" + Date.now(),
+          userId: uid,
+          userName: schema.currentUser?.name || email,
+          action: "User Logged In",
+          ip: "unknown",
+          details: `User ${schema.currentUser?.name || email} logged in successfully.`,
+          timestamp: "Just now",
+        });
+      });
 
-        const currentId = schema.currentUser.id;
-        const uIdx = schema.users.findIndex(u => u.id === currentId);
-        
-        const updated = {
+      const response = NextResponse.json({ success: true, user: data.currentUser });
+      await setSessionCookie(response, authData.idToken);
+      return response;
+    }
+
+    if (action === "logout") {
+      const response = NextResponse.json({ success: true });
+      response.cookies.set(SESSION_COOKIE_NAME, "", { maxAge: 0, path: "/" });
+      return response;
+    }
+
+    if (action === "update_profile") {
+      const uid = await getSessionUid();
+      if (!uid) throw new Error("You must be signed in.");
+      const userDb = getUserDatabase(uid);
+
+      let updatedUser: User | null = null;
+      await userDb.update((schema) => {
+        if (!schema.currentUser) throw new Error("You must be signed in.");
+        updatedUser = {
           ...schema.currentUser,
           name: fullName || schema.currentUser.name,
           username: username || schema.currentUser.username,
           email: email || schema.currentUser.email,
           birthday: birthday !== undefined ? birthday : schema.currentUser.birthday,
-          avatar: avatar || schema.currentUser.avatar
+          avatar: avatar || schema.currentUser.avatar,
         };
-
-        if (newPassword) {
-          updated.password = newPassword;
-        }
-
-        schema.currentUser = updated;
-        if (uIdx !== -1) {
-          schema.users[uIdx] = updated;
-        }
-
+        schema.currentUser = updatedUser;
+        const idx = schema.users.findIndex((u) => u.id === uid);
+        if (idx !== -1) schema.users[idx] = updatedUser;
         schema.auditLogs.unshift({
-          id: 'log-' + Date.now(),
-          userId: currentId,
-          userName: updated.name,
-          action: 'Profile Updated',
-          ip: '127.0.0.1',
-          details: `Modified personal account details.`,
-          timestamp: 'Just now'
+          id: "log-" + Date.now(),
+          userId: uid,
+          userName: updatedUser.name,
+          action: "Profile Updated",
+          ip: "unknown",
+          details: "Modified personal account details.",
+          timestamp: "Just now",
         });
+      });
 
-        resData = { success: true, user: updated };
+      if (newPassword) {
+        await adminAuth.updateUser(uid, { password: newPassword });
       }
 
-      // 5. DELETE_ACCOUNT
-      else if (action === "delete_account") {
-        schema.currentUser = null;
-        schema.users = [];
-        schema.googleAccount = null;
-        schema.businessProfiles = [];
-        schema.reviews = [];
-        schema.replies = [];
-        schema.aiSettings = [];
-        schema.notifications = [];
-        schema.team = [];
-        schema.auditLogs = [];
-        schema.subscription = {
-          plan: 'free',
-          repliesCountThisMonth: 0,
-          limitCount: 100,
-          features: ['1 Business Profile Limit', '100 SaaS AI replies/month']
-        };
-        resData = { success: true };
-      }
-    });
+      return NextResponse.json({ success: true, user: updatedUser });
+    }
 
-    return NextResponse.json(resData);
+    if (action === "delete_account") {
+      const uid = await getSessionUid();
+      if (!uid) throw new Error("You must be signed in.");
+
+      await getUserDatabase(uid).reset();
+      await adminAuth.deleteUser(uid);
+
+      const response = NextResponse.json({ success: true });
+      response.cookies.set(SESSION_COOKIE_NAME, "", { maxAge: 0, path: "/" });
+      return response;
+    }
+
+    return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }

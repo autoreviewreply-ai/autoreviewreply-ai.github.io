@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/database";
+import { getUserDatabase } from "@/lib/database";
+import { getSessionUid } from "@/lib/session";
 
 // GET /api/settings - Fetch AI parameters for a business profile
 export async function GET(req: NextRequest) {
   try {
+    const uid = await getSessionUid();
+    if (!uid) return NextResponse.json({ error: "Profile ID is required" }, { status: 400 });
+
     const { searchParams } = new URL(req.url);
-    const profileId = searchParams.get('profileId');
+    const profileId = searchParams.get("profileId");
 
     if (!profileId) {
       return NextResponse.json({ error: "Profile ID is required" }, { status: 400 });
     }
 
-    const data = db.get();
-    const settings = data.aiSettings.find(s => s.businessProfileId === profileId);
+    const data = await getUserDatabase(uid).get();
+    const settings = data.aiSettings.find((s) => s.businessProfileId === profileId);
 
     if (!settings) {
       return NextResponse.json({ error: "AI Settings not found for this profile" }, { status: 404 });
@@ -27,59 +31,63 @@ export async function GET(req: NextRequest) {
 // PUT /api/settings - Update detailed instructions or star parameters
 export async function PUT(req: NextRequest) {
   try {
+    const uid = await getSessionUid();
+    if (!uid) return NextResponse.json({ error: "You must be signed in." }, { status: 401 });
+
     const body = await req.json();
-    const { 
-      businessProfileId, 
-      tone, 
-      businessName, 
-      businessType, 
-      brandVoice, 
-      preferredGreeting, 
-      preferredClosing, 
-      keywordsToInclude, 
-      keywordsToAvoid, 
-      customInstructions, 
+    const {
+      businessProfileId,
+      tone,
+      businessName,
+      businessType,
+      brandVoice,
+      preferredGreeting,
+      preferredClosing,
+      keywordsToInclude,
+      keywordsToAvoid,
+      customInstructions,
       starSettings,
       defaultBusinessLanguage,
       replyLanguageStrategy,
       customSelectedLanguage,
       isEmailNotificationsEnabled,
-      isPushNotificationsEnabled
+      isPushNotificationsEnabled,
     } = body;
 
     if (!businessProfileId) {
       return NextResponse.json({ error: "Business Profile ID is required" }, { status: 400 });
     }
 
-    let updatedSettings = null;
+    const userDb = getUserDatabase(uid);
+    let updatedSettings: any = null;
 
-    db.update((schema) => {
-      const idx = schema.aiSettings.findIndex(s => s.businessProfileId === businessProfileId);
-      
+    await userDb.update((schema) => {
+      const idx = schema.aiSettings.findIndex((s) => s.businessProfileId === businessProfileId);
+
       const payload = {
-        id: idx !== -1 ? schema.aiSettings[idx].id : 'set-' + Date.now(),
+        id: idx !== -1 ? schema.aiSettings[idx].id : "set-" + Date.now(),
         businessProfileId,
-        tone: tone || 'Professional',
-        businessName: businessName || '',
-        businessType: businessType || '',
-        brandVoice: brandVoice || '',
-        preferredGreeting: preferredGreeting || '',
-        preferredClosing: preferredClosing || '',
+        tone: tone || "Professional",
+        businessName: businessName || "",
+        businessType: businessType || "",
+        brandVoice: brandVoice || "",
+        preferredGreeting: preferredGreeting || "",
+        preferredClosing: preferredClosing || "",
         keywordsToInclude: Array.isArray(keywordsToInclude) ? keywordsToInclude : [],
         keywordsToAvoid: Array.isArray(keywordsToAvoid) ? keywordsToAvoid : [],
-        customInstructions: customInstructions || '',
+        customInstructions: customInstructions || "",
         starSettings: starSettings || {
-          5: { action: 'auto', instructions: 'Thank them' },
-          4: { action: 'auto', instructions: 'Thank them and ask suggestions' },
-          3: { action: 'manual', instructions: 'Acknowledge' },
-          2: { action: 'manual', instructions: 'Manual approval' },
-          1: { action: 'manual', instructions: 'Manual approval' }
+          5: { action: "auto", instructions: "Thank them" },
+          4: { action: "auto", instructions: "Thank them and ask suggestions" },
+          3: { action: "manual", instructions: "Acknowledge" },
+          2: { action: "manual", instructions: "Manual approval" },
+          1: { action: "manual", instructions: "Manual approval" },
         },
-        defaultBusinessLanguage: defaultBusinessLanguage || 'English',
-        replyLanguageStrategy: replyLanguageStrategy || 'customer',
-        customSelectedLanguage: customSelectedLanguage || 'English',
+        defaultBusinessLanguage: defaultBusinessLanguage || "English",
+        replyLanguageStrategy: replyLanguageStrategy || "customer",
+        customSelectedLanguage: customSelectedLanguage || "English",
         isEmailNotificationsEnabled: isEmailNotificationsEnabled !== undefined ? isEmailNotificationsEnabled : true,
-        isPushNotificationsEnabled: isPushNotificationsEnabled !== undefined ? isPushNotificationsEnabled : true
+        isPushNotificationsEnabled: isPushNotificationsEnabled !== undefined ? isPushNotificationsEnabled : true,
       };
 
       if (idx !== -1) {
@@ -87,18 +95,17 @@ export async function PUT(req: NextRequest) {
       } else {
         schema.aiSettings.push(payload);
       }
-      
+
       updatedSettings = payload;
 
-      // Add audit log
       schema.auditLogs.unshift({
-        id: 'log-' + Date.now(),
-        userId: 'user-001',
-        userName: schema.users[0]?.name || 'Dr. Evelyn Carter',
-        action: 'AI Config Overhauled',
-        ip: '127.0.0.1',
+        id: "log-" + Date.now(),
+        userId: uid,
+        userName: schema.users[0]?.name || "Owner",
+        action: "AI Config Overhauled",
+        ip: "unknown",
         details: `Overhauled AI settings and star-based routing rules for profile id: ${businessProfileId}. Tone set: ${tone}.`,
-        timestamp: 'Just now'
+        timestamp: "Just now",
       });
     });
 
