@@ -1161,7 +1161,7 @@ export default function Home() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <h2 className="text-lg font-bold text-slate-900 tracking-tight">Question 6: Do we route 1-2 star reviews to Manual Approval?</h2>
-                  <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl leading-relaxed text-xs text-rose-800 font-semibold space-y-1">
+                  <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl leading-relaxed text-xs text-rose-700 font-semibold space-y-1">
                     <p className="font-bold flex items-center gap-1.5"><ShieldAlert className="h-4 w-4 text-[#ef4444]" /> Highly Recommended Setting!</p>
                     <p>Our Negative Review Safeguard holds critical complaints, legal disputes, refunds, and hostile content off public threads. This gives your staff absolute private control to solve customer errors.</p>
                   </div>
@@ -1419,6 +1419,15 @@ export default function Home() {
 
         {/* User Account Bar & Collapse switch */}
         <div className="p-3 border-t border-white/10 bg-slate-950/20" id="sidebar-footer">
+        {sessionUser && (
+  <button
+    onClick={handleLogout}
+    className="w-full py-2 px-3 mb-2 rounded-lg text-xs font-medium border border-white/10 hover:bg-white/10 text-slate-300 flex items-center justify-center gap-2 transition"
+  >
+    <LogOut className="h-3.5 w-3.5" />
+    {sidebarOpen && <span>Log Out</span>}
+  </button>
+)}
           {googleAccount ? (
             <div className="space-y-3">
               {sidebarOpen && (
