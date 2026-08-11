@@ -83,6 +83,7 @@ export default function Home() {
   
   // Interaction States
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -1322,7 +1323,9 @@ export default function Home() {
       <aside 
         className={`${
           sidebarOpen ? "w-64" : "w-20"
-        } transition-all duration-300 ease-in-out border-r border-[#0f172a]/20 bg-[#0f172a] text-white flex flex-col justify-between shrink-0 z-20`}
+        } ${
+          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        } fixed md:relative inset-y-0 left-0 transition-all duration-300 ease-in-out border-r border-[#0f172a]/20 bg-[#0f172a] text-white flex flex-col justify-between shrink-0 z-40`}
         id="app-sidebar"
       >
         <div>
@@ -1469,6 +1472,14 @@ export default function Home() {
             {sidebarOpen ? "« Collapse Menu" : "» Expand"}
           </button>
         </div>
+
+        {mobileSidebarOpen && (
+        <div
+          onClick={() => setMobileSidebarOpen(false)}
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+        />
+      )}
+
       </aside>
 
       {/* MAIN VIEW CONTROLLER */}
@@ -1476,7 +1487,12 @@ export default function Home() {
         
         {/* TOP COMPONENT STICKY HEADER */}
         <header className="h-16 border-b border-[#e2e8f0] bg-white flex items-center justify-between px-6 z-10 shrink-0">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4"><button
+              onClick={() => setMobileSidebarOpen(true)}
+              className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0"
+            >
+              <Terminal className="h-5 w-5 rotate-90" />
+            </button>
             <span className="text-xs text-slate-500 font-semibold">Business Location:</span>
             {profiles.length > 0 ? (
               <div className="relative">
