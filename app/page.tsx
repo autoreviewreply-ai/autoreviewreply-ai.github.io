@@ -893,6 +893,14 @@ export default function Home() {
               <Building className="h-4 w-4" />
               <span>Connect Google Account</span>
             </button>
+            <div className="text-center pt-2">
+            <button
+              onClick={handleLogout}
+              className="text-xs text-slate-400 hover:text-slate-600 font-semibold underline underline-offset-2 cursor-pointer"
+            >
+              Log out ({sessionUser?.email})
+            </button>
+          </div>
           </div>
         </div>
 
