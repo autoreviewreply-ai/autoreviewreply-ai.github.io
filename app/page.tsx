@@ -1349,7 +1349,7 @@ export default function Home() {
           {/* Nav Items List */}
           <nav className="p-3 space-y-1.5" id="sidebar-nav">
             <button
-              onClick={() => setActiveTab("dashboard")}
+              onClick={() => { setActiveTab("dashboard"); setMobileSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
                 activeTab === "dashboard"
                   ? "bg-white/10 text-white font-medium"
@@ -1361,7 +1361,7 @@ export default function Home() {
             </button>
 
             <button
-              onClick={() => setActiveTab("queue")}
+              onClick={() => { setActiveTab("queue"); setMobileSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all relative cursor-pointer ${
                 activeTab === "queue"
                   ? "bg-white/10 text-white font-medium"
@@ -1378,7 +1378,7 @@ export default function Home() {
             </button>
 
             <button
-              onClick={() => setActiveTab("history")}
+              onClick={() => { setActiveTab("history"); setMobileSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
                 activeTab === "history"
                   ? "bg-white/10 text-white font-medium"
@@ -1390,7 +1390,7 @@ export default function Home() {
             </button>
 
             <button
-              onClick={() => setActiveTab("settings")}
+              onClick={() => { setActiveTab("settings"); setMobileSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
                 activeTab === "settings"
                   ? "bg-white/10 text-white font-medium"
@@ -1402,7 +1402,7 @@ export default function Home() {
             </button>
 
             <button
-              onClick={() => setActiveTab("team")}
+              onClick={() => { setActiveTab("team"); setMobileSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
                 activeTab === "team"
                   ? "bg-white/10 text-white font-medium"
@@ -1414,7 +1414,7 @@ export default function Home() {
             </button>
 
             <button
-              onClick={() => setActiveTab("billing")}
+              onClick={() => { setActiveTab("billing"); setMobileSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
                 activeTab === "billing"
                   ? "bg-white/10 text-white font-medium"
