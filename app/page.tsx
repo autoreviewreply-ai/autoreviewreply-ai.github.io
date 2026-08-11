@@ -824,6 +824,13 @@ export default function Home() {
   if (!googleAccount) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-50 via-slate-50 to-slate-100 font-sans leading-normal" id="landing-container">
+        <button
+          onClick={handleLogout}
+          className="fixed top-6 right-6 z-50 py-2.5 px-5 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-lg border border-slate-200 hover:scale-105 transition duration-200 cursor-pointer flex items-center gap-2"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Log Out</span>
+        </button>
         <div className="max-w-4xl w-full space-y-10 py-12 px-8 bg-white border border-slate-200 rounded-3xl shadow-xl">
           {/* Top Logo */}
           <div className="text-center space-y-4">
@@ -893,14 +900,6 @@ export default function Home() {
               <Building className="h-4 w-4" />
               <span>Connect Google Account</span>
             </button>
-            <div className="text-center pt-2">
-            <button
-              onClick={handleLogout}
-              className="text-xs text-slate-400 hover:text-slate-600 font-semibold underline underline-offset-2 cursor-pointer"
-            >
-              Log out ({sessionUser?.email})
-            </button>
-          </div>
           </div>
         </div>
 
