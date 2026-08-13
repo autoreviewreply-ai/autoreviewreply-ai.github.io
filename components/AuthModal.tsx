@@ -2,19 +2,22 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Mail, Lock, User, Calendar, Image as ImageIcon, Sparkles, Building, KeyRound, Check } from 'lucide-react';
+import { signInWithPopup } from 'firebase/auth';
+import { auth, googleProvider } from '@/lib/firebase';
+import { X, Mail, Lock, User, Calendar, Image as ImageIcon, Sparkles, Building, KeyRound, Check, Loader2 } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialMode: 'login' | 'signup';
   onAuthSuccess: (user: any) => void;
-  onContinueWithGoogle: () => void; 
+  onContinueWithGoogle: () => void;
 }
 
 export default function AuthModal({ isOpen, onClose, initialMode, onAuthSuccess, onContinueWithGoogle }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Form Fields
@@ -107,6 +110,40 @@ export default function AuthModal({ isOpen, onClose, initialMode, onAuthSuccess,
     }
   };
 
+  // Real Google sign-in: opens the actual Google account picker/popup via Firebase Auth,
+  // then exchanges the resulting token for our own session cookie.
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setGoogleLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Google sign-in failed');
+      }
+
+      onAuthSuccess(data.user);
+      cleanForm();
+      onClose();
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        setGoogleLoading(false);
+        return;
+      }
+      setError(err.message || 'Google sign-in failed.');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -152,31 +189,38 @@ export default function AuthModal({ isOpen, onClose, initialMode, onAuthSuccess,
           {/* Social Sign In Button */}
           <button
             type="button"
-            onClick={() => {
-              onContinueWithGoogle();
-              onClose();
-            }}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer hover:border-slate-300 transition"
+            onClick={handleGoogleSignIn}
+            disabled={googleLoading}
+            className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer hover:border-slate-300 transition disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <svg className="h-4 w-4" viewBox="0 0 24 24">
-              <path
-                fill="#EA4335"
-                d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.54 14.98 1 12 1 7.35 1 3.37 3.68 1.48 7.6l3.87 3C6.27 7.6 8.9 5.04 12 5.04z"
-              />
-              <path
-                fill="#4285F4"
-                d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.46c-.29 1.48-1.14 2.73-2.43 3.58l3.77 2.92c2.2-2.03 3.69-5.02 3.69-8.65z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.35 14.4c-.23-.69-.36-1.43-.36-2.2s.13-1.51.36-2.2L1.48 7.01C.53 8.9 0 11.01 0 13.2s.53 4.3 1.48 6.19l3.87-3c-.23-.7-.36-1.44-.36-2.21z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c3.24 0 5.95-1.08 7.93-2.92l-3.77-2.92c-1.1.74-2.52 1.18-4.16 1.18-3.1 0-5.73-2.56-6.65-5.56l-3.87 3C3.37 20.32 7.35 23 12 23z"
-              />
-            </svg>
-            <span>Continue with Google</span>
+            {googleLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Waiting for Google...</span>
+              </>
+            ) : (
+              <>
+                <svg className="h-4 w-4" viewBox="0 0 24 24">
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.54 14.98 1 12 1 7.35 1 3.37 3.68 1.48 7.6l3.87 3C6.27 7.6 8.9 5.04 12 5.04z"
+                  />
+                  <path
+                    fill="#4285F4"
+                    d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.46c-.29 1.48-1.14 2.73-2.43 3.58l3.77 2.92c2.2-2.03 3.69-5.02 3.69-8.65z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.35 14.4c-.23-.69-.36-1.43-.36-2.2s.13-1.51.36-2.2L1.48 7.01C.53 8.9 0 11.01 0 13.2s.53 4.3 1.48 6.19l3.87-3c-.23-.7-.36-1.44-.36-2.21z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c3.24 0 5.95-1.08 7.93-2.92l-3.77-2.92c-1.1.74-2.52 1.18-4.16 1.18-3.1 0-5.73-2.56-6.65-5.56l-3.87 3C3.37 20.32 7.35 23 12 23z"
+                  />
+                </svg>
+                <span>Continue with Google</span>
+              </>
+            )}
           </button>
 
           <div className="relative flex items-center justify-center">
