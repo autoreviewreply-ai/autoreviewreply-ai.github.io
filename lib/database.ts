@@ -53,6 +53,7 @@ export interface Review {
   status: 'pending' | 'replied' | 'flagged' | 'manual_review';
   errorReason?: string;
   suggestedReplies?: string[]; // 3 suggestions for manual approval if negative protection triggered
+  googleReviewName?: string; // ADD THIS LINE — real Google resource path, used to post replies for real
 }
 
 export interface ReviewReply {
