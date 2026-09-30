@@ -1,40 +1,66 @@
 import { NextResponse } from "next/server";
 import { getSessionUid } from "@/lib/session";
+import { getUserDatabase, getSeededData, GoogleAccount } from "@/lib/database";
 
-// GET /api/auth/google-connect - Kicks off the REAL Google OAuth flow.
-// The user must already be signed in to our app; we then send them to
-// Google's own consent screen to authorize access to their Business Profile.
-export async function GET(req: Request) {
-  const uid = await getSessionUid();
-  const origin = new URL(req.url).origin;
+function toPublicAccount(acc: GoogleAccount | null): GoogleAccount | null {
+  if (!acc) return null;
+  return { ...acc, accessToken: "", refreshToken: "" };
+}
 
-  if (!uid) {
-    // Not signed in - nothing to connect to. Send them home.
-    return NextResponse.redirect(`${origin}/`);
+// Returns the connected Google account (used on every page load)
+export async function GET() {
+  try {
+    const uid = await getSessionUid();
+    if (!uid) return NextResponse.json({ googleAccount: null });
+    const data = await getUserDatabase(uid).get();
+    return NextResponse.json({ googleAccount: toPublicAccount(data.googleAccount) });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message, googleAccount: null }, { status: 500 });
   }
+}
 
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  if (!clientId) {
-    return NextResponse.json({ error: "GOOGLE_CLIENT_ID is not configured." }, { status: 500 });
+// Demo/sandbox connection (loads sample data)
+export async function POST() {
+  try {
+    const uid = await getSessionUid();
+    if (!uid) return NextResponse.json({ error: "You must be signed in." }, { status: 401 });
+
+    const userDb = getUserDatabase(uid);
+    const current = await userDb.get();
+    const seed = getSeededData();
+
+    await userDb.update((schema) => {
+      schema.googleAccount = seed.googleAccount;
+      schema.businessProfiles = seed.businessProfiles;
+      schema.reviews = seed.reviews;
+      schema.replies = seed.replies;
+      schema.aiSettings = seed.aiSettings;
+      schema.notifications = seed.notifications;
+      schema.currentUser = current.currentUser;
+      schema.users = current.users;
+    });
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
+}
 
-  const redirectUri = `${origin}/api/auth/google-callback`;
-  const scope = [
-    "openid",
-    "email",
-    "profile",
-    "https://www.googleapis.com/auth/business.manage",
-  ].join(" ");
+// Disconnect Google
+export async function DELETE() {
+  try {
+    const uid = await getSessionUid();
+    if (!uid) return NextResponse.json({ error: "You must be signed in." }, { status: 401 });
 
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: "code",
-    scope,
-    access_type: "offline", // needed to get a refresh_token
-    prompt: "consent",       // forces Google to re-issue a refresh_token every time
-    include_granted_scopes: "true",
-  });
-
-  return NextResponse.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+    await getUserDatabase(uid).update((schema) => {
+      schema.googleAccount = null;
+      schema.businessProfiles = [];
+      schema.reviews = [];
+      schema.replies = [];
+      schema.aiSettings = [];
+      schema.notifications = [];
+    });
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
