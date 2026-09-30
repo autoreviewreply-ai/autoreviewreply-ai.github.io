@@ -9,7 +9,24 @@ export async function GET() {
     if (!uid) {
       return NextResponse.json({ googleAccount: null, loggedInUser: null });
     }
-    const data = await getUserDatabase(uid).get();
+    const userDb = getUserDatabase(uid);
+    const data = await userDb.get();
+
+    // Legacy demo builds used a fake Google account id. Never expose that as a
+    // real connection: clear the demo workspace so the user must connect the
+    // actual Google Business Profile through OAuth.
+    if (data.googleAccount?.id === "google-oauth-123") {
+      await userDb.update((schema) => {
+        schema.googleAccount = null as any;
+        schema.businessProfiles = [];
+        schema.reviews = [];
+        schema.replies = [];
+        schema.aiSettings = [];
+        schema.notifications = [];
+      });
+      return NextResponse.json({ googleAccount: null, loggedInUser: data.currentUser || null });
+    }
+
     return NextResponse.json({
       googleAccount: data.googleAccount,
       loggedInUser: data.currentUser || null,
