@@ -895,7 +895,7 @@ export default function Home() {
             </div>
 
             <button
-              onClick={() => setOauthModalOpen(true)}
+              onClick={() => { window.location.href = '/api/auth/google-connect'; }}
               className="w-full md:w-auto shrink-0 py-3.5 px-8 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-xs rounded-2xl shadow-lg shadow-[#2563eb]/20 hover:scale-102 transition duration-200 cursor-pointer flex items-center justify-center gap-2"
             >
               <Building className="h-4 w-4" />
@@ -1457,7 +1457,7 @@ export default function Home() {
             </div>
           ) : (
             <button 
-              onClick={() => setOauthModalOpen(true)}
+              onClick={() => { window.location.href = '/api/auth/google-connect'; }}
               className="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-[#2563eb] hover:bg-[#1d4ed8] text-white flex items-center justify-center gap-2 transition shadow-lg shadow-[#2563eb]/20 animate-bounce cursor-pointer"
             >
               <Building className="h-3.5 w-3.5" />
@@ -1623,41 +1623,13 @@ export default function Home() {
                      setActiveTab("queue"); // simulator resides on manual queue tab too
                   }
                 } else {
-                  // Direct pull sync!
                   setSyncingGmb(true);
-                  await new Promise(resolve => setTimeout(resolve, 1500));
-                  
-                  // Trigger a review in DB
                   try {
-                    const authorPresets = ["Jonathan Reed", "Sophia Loren", "Carlos Santana", "Dr. Richard Chen", "Natalie Portman"];
-                    const feedPresets = [
-                      { rating: 5, text: "Excellent patient experience! Ever since switching to Dr. Carter, my dentists team are fabulous and anxiety-free." },
-                      { rating: 4, text: "Extremely professional clinic. Wait time was a tiny bit longer, but the team's bedside manner completely makes up for it." },
-                      { rating: 1, text: "They overcharged my retainer and I am having a legal dispute. Refund my money immediately!" },
-                      { rating: 2, text: "The braces are okay, but I can't reach the customer success representative to answer my sensitive questions. Please call back." }
-                    ];
-                    
-                    const randomIdx = Math.floor(Math.random() * feedPresets.length);
-                    const selectedPreset = feedPresets[randomIdx];
-                    const randomAuthor = authorPresets[Math.floor(Math.random() * authorPresets.length)];
-
-                    const res = await fetch("/api/reviews", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        businessProfileId: selectedProfile?.id || profiles[0]?.id || "bp-1",
-                        authorName: randomAuthor,
-                        text: selectedPreset.text,
-                        rating: selectedPreset.rating
-                      })
-                    });
-                    if (res.ok) {
-                      await fetchCoreData();
-                    }
+                    await fetch('/api/gbp/sync', { method: 'POST' });
+                    await fetchCoreData();
                   } catch (e) {
-                    console.error("GMB sync trigger error", e);
+                    console.error("Real GBP sync failed", e);
                   }
-                  
                   setSyncingGmb(false);
                 }
               }}
@@ -2204,40 +2176,12 @@ export default function Home() {
                           type="button"
                           onClick={async () => {
                             setSyncingGmb(true);
-                            // Simulate background Sync API call
-                            await new Promise(resolve => setTimeout(resolve, 1500));
-                            
-                            // Trigger review simulations in database through a real POST call!
                             try {
-                              const authorPresets = ["Jonathan Reed", "Sophia Loren", "Carlos Santana", "Dr. Richard Chen", "Natalie Portman"];
-                              const feedPresets = [
-                                { rating: 5, text: "Excellent patient experience! Ever since switching to Dr. Carter, my dentists team are fabulous and anxiety-free." },
-                                { rating: 4, text: "Extremely professional clinic. Wait time was a tiny bit longer, but the team's bedside manner completely makes up for it." },
-                                { rating: 1, text: "They overcharged my retainer and I am having a legal dispute. Refund my money immediately!" },
-                                { rating: 2, text: "The braces are okay, but I can't reach the customer success representative to answer my sensitive questions. Please call back." }
-                              ];
-                              
-                              const randomIdx = Math.floor(Math.random() * feedPresets.length);
-                              const selectedPreset = feedPresets[randomIdx];
-                              const randomAuthor = authorPresets[Math.floor(Math.random() * authorPresets.length)];
-
-                              const res = await fetch("/api/reviews", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  businessProfileId: selectedProfile?.id || profiles[0]?.id || "bp-1",
-                                  authorName: randomAuthor,
-                                  text: selectedPreset.text,
-                                  rating: selectedPreset.rating
-                                })
-                              });
-                              if (res.ok) {
-                                await fetchCoreData();
-                              }
+                              await fetch('/api/gbp/sync', { method: 'POST' });
+                              await fetchCoreData();
                             } catch (e) {
-                              console.error("Manual sync simulation failed", e);
+                              console.error("Real GBP sync failed", e);
                             }
-
                             setSyncingGmb(false);
                           }}
                           disabled={syncingGmb}

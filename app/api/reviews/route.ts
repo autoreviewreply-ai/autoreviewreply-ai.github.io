@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserDatabase, Review, ReviewReply } from "@/lib/database";
 import { getSessionUid } from "@/lib/session";
 import { analyzeReview, generateSingleReply, generateThreeSuggestedReplies } from "@/lib/gemini";
+import { getValidAccessToken, postReviewReply } from "@/lib/google-business";
 
 // GET /api/reviews - Get review history merged with replies, for the signed-in user
 export async function GET(req: NextRequest) {
@@ -302,6 +303,16 @@ export async function PUT(req: NextRequest) {
     }
 
     const userDb = getUserDatabase(uid);
+    const data = await userDb.get();
+    const targetReview = data.reviews.find((r) => r.id === reviewId);
+
+    // If this review came from a real Google sync, post the reply for real first.
+    // If this fails, we stop here rather than showing a "posted" state that isn't true.
+    if (targetReview?.googleReviewName && data.googleAccount?.isConnected) {
+      const accessToken = await getValidAccessToken(uid, data.googleAccount);
+      await postReviewReply(accessToken, targetReview.googleReviewName, replyText);
+    }
+
     let updatedReview: Review | null = null;
     let finalReply: ReviewReply | null = null;
 
