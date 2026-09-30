@@ -147,13 +147,39 @@ export default function Home() {
   const [wizardEnablePushNotif, setWizardEnablePushNotif] = useState<boolean>(true);
 
   // Fetch initial data
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setMounted(true);
-    }, 0);
-    fetchCoreData();
-    return () => clearTimeout(timer);
-  }, []);
+useEffect(() => {
+  const timer = setTimeout(() => {
+    setMounted(true);
+  }, 0);
+
+  fetchCoreData();
+
+  // Handle successful Google Business Profile connection.
+  if (typeof window !== "undefined") {
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get("google_connected") === "true") {
+      // Reload the dashboard data so the newly connected
+      // Google account and real business profiles appear.
+      fetchCoreData();
+
+      // Remove ?google_connected=true from the address bar
+      // without causing another page reload.
+      window.history.replaceState({}, "", "/");
+    }
+
+    const googleError = params.get("google_error");
+
+    if (googleError) {
+      console.error("Google connection error:", googleError);
+      alert(`Google connection failed: ${googleError}`);
+
+      window.history.replaceState({}, "", "/");
+    }
+  }
+
+  return () => clearTimeout(timer);
+}, []);
 
   // Sync settings when selecting profile changed
   useEffect(() => {
