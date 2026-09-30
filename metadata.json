@@ -1,0 +1,6 @@
+{
+  "name": "Auto Review Reply",
+  "description": "Automatically replies to Google Business Profile reviews using customizable AI-generated responses based on star ratings, sentiment, sentiment scoring, and custom guidelines.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
