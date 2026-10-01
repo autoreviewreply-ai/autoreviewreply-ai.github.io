@@ -43,7 +43,59 @@ const hasExistingGoogleReply = !!gRev.reviewReply?.comment;
         const authorName = gRev.reviewer?.displayName || "Anonymous";
         const text = gRev.comment || "";
         if (!text) continue; // some reviews are star-only with no text; nothing for the AI to analyze
+        // If Google already has an owner reply, import it without generating an AI reply
+        if (hasExistingGoogleReply) {
+          const reviewId = "rev-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
 
+          const newReview: Review = {
+            id: reviewId,
+            businessProfileId: profile.id,
+            authorName,
+            authorPhoto: gRev.reviewer?.profilePhotoUrl || `https://picsum.photos/seed/${authorName.replace(/\s+/g, "")}/100/100`,
+            rating,
+            text,
+            publishTime: gRev.createTime || "Just now",
+            sentiment: "neutral",
+            sentimentScore: 0,
+            isNew: false,
+            status: "replied",
+            googleReviewName: gRev.name,
+          };
+
+          const existingReply: ReviewReply = {
+            id: "rep-" + Date.now(),
+            reviewId,
+            replyText: gRev.reviewReply!.comment,
+            status: "posted",
+            replyTime: gRev.createTime || "Just now",
+            authorName: "Google Business Profile",
+            isAutoReplied: false,
+          };
+
+          await userDb.update((schema) => {
+            schema.reviews.push(newReview);
+            schema.replies.push(existingReply);
+
+            const p = schema.businessProfiles.find((bp) => bp.id === profile.id);
+            if (p) {
+              const allReviewsOfProfile = schema.reviews.filter(
+                (r) => r.businessProfileId === profile.id
+              );
+              const totalRating = allReviewsOfProfile.reduce(
+                (acc, curr) => acc + curr.rating,
+                0
+              );
+              p.totalReviewsCount = allReviewsOfProfile.length;
+              p.averageRating = Number(
+                (totalRating / allReviewsOfProfile.length).toFixed(1)
+              );
+            }
+          });
+
+          newReviewsCount++;
+          continue;
+        }
+        
         const analysis = await analyzeReview(text, rating);
 
         const settings = data.aiSettings.find((s) => s.businessProfileId === profile.id) || {
