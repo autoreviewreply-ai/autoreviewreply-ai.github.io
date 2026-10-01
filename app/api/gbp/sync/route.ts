@@ -31,6 +31,12 @@ export async function POST() {
 
     for (const profile of data.businessProfiles) {
       const { reviews: googleReviews } = await listReviewsForLocation(accessToken, accountResourceName, profile.id);
+      console.log("GBP DEBUG:", {
+  profile: profile.name,
+  profileId: profile.id,
+  reviewCount: googleReviews.length,
+  reviews: googleReviews,
+});
 
       for (const gRev of googleReviews) {
         // Skip reviews we've already imported
