@@ -36,8 +36,8 @@ export async function POST() {
         // Skip reviews we've already imported
         const alreadyExists = data.reviews.some((r) => r.googleReviewName === gRev.name);
         if (alreadyExists) continue;
-        // Skip reviews that already have an owner reply on Google (posted outside our app)
-        if (gRev.reviewReply?.comment) continue;
+        // Existing Google reply will be imported and preserved below
+const hasExistingGoogleReply = !!gRev.reviewReply?.comment;
 
         const rating = starRatingToNumber(gRev.starRating);
         const authorName = gRev.reviewer?.displayName || "Anonymous";
