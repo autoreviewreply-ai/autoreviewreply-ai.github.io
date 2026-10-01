@@ -2446,7 +2446,32 @@ useEffect(() => {
                     <p className="text-xs text-slate-500 font-medium font-semibold">Detailed database records containing automatic action indices</p>
                   </div>
                   <button 
-                    onClick={fetchCoreData}
+                    onClick={async () => {
+  setSyncingGmb(true);
+
+  try {
+    const res = await fetch("/api/gbp/sync", {
+      method: "POST",
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || "Google review synchronization failed.");
+    }
+
+    await fetchCoreData();
+
+    alert(
+      `Google review sync completed. ${data.newReviewsCount || 0} new review(s) found.`
+    );
+  } catch (error: any) {
+    console.error("GBP sync failed:", error);
+    alert(error.message || "Google review synchronization failed.");
+  } finally {
+    setSyncingGmb(false);
+  }
+}}
                     className="p-2 border border-slate-200 bg-white rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition flex items-center gap-1.5 text-xs font-semibold cursor-pointer shadow-xs"
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
